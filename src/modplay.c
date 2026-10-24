@@ -448,17 +448,10 @@ void modplay_disable()
 {
 	mp_playing = 0;
 
-	// set sample address to the empty sample
-	sample_address0 = ((uint32_t)(&mp_emptysample) >>  0) & 0xff;
-	sample_address1 = ((uint32_t)(&mp_emptysample) >>  8) & 0xff;
-	sample_address2 = ((uint32_t)(&mp_emptysample) >> 16) & 0xff;
-
 	for(int i = 0; i < 4; i++)
 	{
 		mp_register_channel_offset = i << 4;
-		poke(0xd72a + mp_register_channel_offset, sample_address0);
-		poke(0xd72b + mp_register_channel_offset, sample_address1);
-		poke(0xd72c + mp_register_channel_offset, sample_address2);
+		poke(0xd720 + mp_register_channel_offset, 0x00);
 	}
 }
 
