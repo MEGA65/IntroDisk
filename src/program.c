@@ -1038,7 +1038,7 @@ void program_main_processkeyboard()
 			return;
 	}
 
-	if(keyboard_modifierpressed(KEYBOARD_LEFTSHIFT) == 1)
+	if(keyboard_modifierpressed(KEYBOARD_LEFTSHIFT) == 1 || keyboard_modifierpressed(KEYBOARD_RIGHTSHIFT) == 1)
 	{
 		movespeed = 8;
 	}
