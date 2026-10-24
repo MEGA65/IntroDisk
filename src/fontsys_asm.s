@@ -277,6 +277,11 @@ endofinsprite
 		.public fontsys_buildlineptrlist
 fontsys_buildlineptrlist:
 
+		lda #.byte0 fsbl1							; set pointer to buildlineline dictionary reader
+		sta fnts_dictionary_word_readptr+1
+		lda #.byte1 fsbl1
+		sta fnts_dictionary_word_readptr+2
+
 		; big list of text.
 		; the only thing we'll find in here is normal text, 0x0a for returns and 0x00 for the end of the big list.
 
@@ -342,7 +347,7 @@ fsbl3_good:
 		cmp #0xff						; is this the start of a dictionary word?
 		bne fsbl3_continue
 
-		jsr fnts_dictionary_word_url	; it is a dictionary word. set pointers to dictionary
+		jsr fnts_dictionary_word		; it is a dictionary word. set pointers to dictionary
 		jmp fsbl1						; and continue with normal read loop
 
 fsbl3_continue:
@@ -424,6 +429,11 @@ fsblplnl3:
 		lda #0x00
 		sta txturl,x
 
+		lda #.byte0 fnts_readchar					; restore pointer to buildlineline dictionary reader
+		sta fnts_dictionary_word_readptr+1
+		lda #.byte1 fnts_readchar
+		sta fnts_dictionary_word_readptr+2
+
 		rts
 
 ; ----------------------------------------------------------------------------------------------------
@@ -471,7 +481,7 @@ fnts_controlcode:
 		cmp #0xff						; $ff = dictionary word
 		bne fnts_controlcode2
 		jsr fnts_dictionary_word
-		jmp fnts_readchar
+		jmp fnts_readchar				; and continue reading
 
 fnts_controlcode2:
 		sec
@@ -638,7 +648,7 @@ fnts_dictionary_word:
 		plx
 
 		ldz #0
-
+fnts_dictionary_word_readptr:				; self-modifying code - either fnts_readchar or fsbl1
 		jsr fnts_readchar					; read dictionary word until 0
 
 		pla									; restore text read pointer to original position
@@ -652,67 +662,7 @@ fnts_dictionary_word:
 
 		plz
 
-		jmp fnts_readchar					; and continue reading
-
-; ----------------------------------------------------------------------------------------------------
-
-fnts_dictionary_word_url:
-		inz
-		lda [zp:zptxtsrc1],z				; read bytes for dictionary index.
-		sta fnts_dictionary_index
-		inz									; and increase by one
-
-		phz									; push current char index to return to later
-
-		lda zp:zptxtsrc1+0
-		pha
-		lda zp:zptxtsrc1+1
-		pha
-		lda zp:zptxtsrc1+2
-		pha
-		lda zp:zptxtsrc1+3
-		pha
-
-		phx									; push current url char index to return to later
-
-		lda #.byte0 (MENUDICT+0x0000)
-		sta zp:zptxtsrc1+0
-		lda #.byte1 (MENUDICT+0x0000)
-		sta zp:zptxtsrc1+1
-		lda #.byte2 (MENUDICT+0x0000)
-		sta zp:zptxtsrc1+2
-		lda #.byte3 (MENUDICT+0x0000)
-		sta zp:zptxtsrc1+3
-
-		ldz fnts_dictionary_index			; grab low byte of dictionary word
-		lda [zp:zptxtsrc1],z
-		tax 
-
-		lda #.byte1 (MENUDICT+0x0100)
-		sta zp:zptxtsrc1+1
-
-		lda [zp:zptxtsrc1],z				; grab high byte of dictionary word
-		sta zp:zptxtsrc1+1
-		stx zp:zptxtsrc1+0
-
-		plx
-
-		ldz #0
-
-		jsr fsbl1							; read dictionary word until 0
-
-		pla									; restore text read pointer to original position
-		sta zp:zptxtsrc1+3
-		pla
-		sta zp:zptxtsrc1+2
-		pla
-		sta zp:zptxtsrc1+1
-		pla
-		sta zp:zptxtsrc1+0
-
-		plz
-
-		jmp fsbl1							; and continue reading
+		rts
 
 ; ----------------------------------------------------------------------------------------------------
 
