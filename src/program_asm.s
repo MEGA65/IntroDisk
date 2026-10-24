@@ -1,6 +1,7 @@
 			.rtmodel cpu, "*"
 			
 			.extern fontsys_buildlineptrlist
+			.extern fontsys_buildlineptrlist_end
 			.extern fl_mode
 			.extern fl_set_filename
 			.extern fl_get_endofbasic
@@ -61,6 +62,7 @@ program_mainloop:
 			cmp #1							; 1 = build lineptrlist
 			bne pml2$
 			jsr fontsys_buildlineptrlist
+			jsr fontsys_buildlineptrlist_end
 			lda #2							; 2 = lineptrlist is done, signal IRQ that it can start rendering disk
 			sta program_mainloopstate
 			jmp program_mainloop

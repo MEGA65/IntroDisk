@@ -300,18 +300,14 @@ fsbl0:	lda #0
 		lda #0
 		sta fnts_lineurlsize-1,y
 fsbl1:	lda [zp:zptxtsrc1],z
-		beq fontsys_buildlineptrlist_end ; 00
+		bne fsbl11						; is char 0? (end of lines or end of dictionary word)
+		rts								; yep, back out and either continue with rest of text if we were reading a dictionary word
+										; or jump to fontsys_buildlineptrlist_end
 
-		cmp #0xb1		; skip over gotox control code
-		bne fsbl6
-		inz
-		inz
-		inz
-		bra fsbl1
-
-fsbl6:
-		cmp #0xff		; skip over dictionary control code
+fsbl11:		
+		cmp #0xb1						; skip over gotox control code
 		bne fsbl7
+		inz
 		inz
 		inz
 		bra fsbl1
@@ -320,36 +316,57 @@ fsbl7:
 		cmp #0x0a
 		beq fontsys_buildlineptrlist_nextline
 
-		cmp #0x96		; URL starts with 0x96 colour code
-		bne fsbl2
-		jsr starturlcapture
-		bra fsbl5
+		cmp #0x96						; is the char 96 (url colour code)?
+		bne fsbl2						; nope, not a url. continue with rest of tests
+		jsr starturlcapture				; yes, signal url capture start
+		bra fsbl5						; and move to next char
 
-fsbl2:	cmp #0x9b		; URL ends with 0x9B colour code
-		bne fsbl3
-		lda #0
+fsbl2:	cmp #0x9b						; is the char 9b (end url colour code)?
+		bne fsbl3						; nope, go and check if we're capturing a url and either store it or move to next char
+		lda #0							; yes, signal end url capture
 		sta capturingurl
-		bra fsbl5
+		bra fsbl5						; and move to next char
 
-fsbl3:	pha
-		lda capturingurl
-		beq fsbl4
-		pla
+fsbl3:	pha								; push current char
+		lda capturingurl				; are we capturing a url?
+		beq fsbl4						; no, pop char and continue to next char
+		pla								; yes, pop char
 
-		cpx #0x00
-		bne fsbl3_good
+		cpx #0x00						; we're capturing url. are we at the first char of the url?
+		bne fsbl3_good					; nope, store char to url and move to next char
 
-		cmp #'-'		; skip '-' if it is first char of url (for hidden url)
-		beq fsbl5
+		cmp #'-'						; we are at the first char. is it '-' (hidden url control code)?
+		beq fsbl5						; yes, skip the char (the actual hiding happens when we're rendering text, not when building the line list)
 
 fsbl3_good:
-		sta txturl,x
-		inx
-		bra fsbl5
+		cmp #0xff						; is this the start of a dictionary word?
+		bne fsbl3_continue
 
-fsbl4:	pla
-fsbl5:	inz
+		jsr fnts_dictionary_word_url	; it is a dictionary word. set pointers to dictionary
+		jmp fsbl1						; and continue with normal read loop
+
+fsbl3_continue:
+		sta txturl,x					; nope, store the char in the url text
+		inx
+		inz
 		bra fsbl1
+
+fsbl4:	pla								; not capturing url code path
+		cmp #0xff						; skip over dictionary control code
+		bne fsbl5
+		inz
+		inz
+		bra fsbl1
+
+fsbl5:
+		inz
+		bra fsbl1
+
+
+
+
+
+
 
 fontsys_buildlineptrlist_nextline
 
@@ -385,6 +402,7 @@ fsblplnl2:
 		iny
 		jmp fsbl0
 
+		.public fontsys_buildlineptrlist_end
 fontsys_buildlineptrlist_end
 		sty fnts_numlineptrs
 
@@ -452,7 +470,8 @@ fontsys_asmrender_notfinal
 fnts_controlcode:
 		cmp #0xff						; $ff = dictionary word
 		bne fnts_controlcode2
-		jmp fnts_dictionary_word
+		jsr fnts_dictionary_word
+		jmp fnts_readchar
 
 fnts_controlcode2:
 		sec
@@ -594,6 +613,8 @@ fnts_dictionary_word:
 		lda zp:zptxtsrc1+3
 		pha
 
+		phx									; push current url char index (if any, normal dictionary lookups don't care) to return to later
+
 		lda #.byte0 (MENUDICT+0x0000)
 		sta zp:zptxtsrc1+0
 		lda #.byte1 (MENUDICT+0x0000)
@@ -614,10 +635,13 @@ fnts_dictionary_word:
 		sta zp:zptxtsrc1+1
 		stx zp:zptxtsrc1+0
 
-		ldz #0
-		jsr fnts_readchar
+		plx
 
-		pla
+		ldz #0
+
+		jsr fnts_readchar					; read dictionary word until 0
+
+		pla									; restore text read pointer to original position
 		sta zp:zptxtsrc1+3
 		pla
 		sta zp:zptxtsrc1+2
@@ -628,7 +652,67 @@ fnts_dictionary_word:
 
 		plz
 
-		jmp fnts_readchar
+		jmp fnts_readchar					; and continue reading
+
+; ----------------------------------------------------------------------------------------------------
+
+fnts_dictionary_word_url:
+		inz
+		lda [zp:zptxtsrc1],z				; read bytes for dictionary index.
+		sta fnts_dictionary_index
+		inz									; and increase by one
+
+		phz									; push current char index to return to later
+
+		lda zp:zptxtsrc1+0
+		pha
+		lda zp:zptxtsrc1+1
+		pha
+		lda zp:zptxtsrc1+2
+		pha
+		lda zp:zptxtsrc1+3
+		pha
+
+		phx									; push current url char index to return to later
+
+		lda #.byte0 (MENUDICT+0x0000)
+		sta zp:zptxtsrc1+0
+		lda #.byte1 (MENUDICT+0x0000)
+		sta zp:zptxtsrc1+1
+		lda #.byte2 (MENUDICT+0x0000)
+		sta zp:zptxtsrc1+2
+		lda #.byte3 (MENUDICT+0x0000)
+		sta zp:zptxtsrc1+3
+
+		ldz fnts_dictionary_index			; grab low byte of dictionary word
+		lda [zp:zptxtsrc1],z
+		tax 
+
+		lda #.byte1 (MENUDICT+0x0100)
+		sta zp:zptxtsrc1+1
+
+		lda [zp:zptxtsrc1],z				; grab high byte of dictionary word
+		sta zp:zptxtsrc1+1
+		stx zp:zptxtsrc1+0
+
+		plx
+
+		ldz #0
+
+		jsr fsbl1							; read dictionary word until 0
+
+		pla									; restore text read pointer to original position
+		sta zp:zptxtsrc1+3
+		pla
+		sta zp:zptxtsrc1+2
+		pla
+		sta zp:zptxtsrc1+1
+		pla
+		sta zp:zptxtsrc1+0
+
+		plz
+
+		jmp fsbl1							; and continue reading
 
 ; ----------------------------------------------------------------------------------------------------
 
